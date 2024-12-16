@@ -1,0 +1,252 @@
+# Airflow GitOps Kubernetes Configuration with LDAP and Secrets
+
+---
+# 1. LDAP Authentication Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-ldap-secret
+type: Opaque
+stringData:
+  ldap-bind-user: cn=airflow-ldap-bind,ou=service-accounts,dc=example,dc=com
+  ldap-bind-password: ${LDAP_BIND_PASSWORD}
+  ldap-uri: ldaps://ldap.example.com:636
+  ldap-search-base: ou=users,dc=example,dc=com
+
+---
+# 2. Airflow Webserver Deployment with LDAP Authentication
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: airflow-webserver
+  template:
+    metadata:
+      labels:
+        app: airflow-webserver
+    spec:
+      containers:
+      - name: airflow-webserver
+        image: apache/airflow:2.6.3-python3.9
+        env:
+        # Database Connection
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: airflow-database-secret
+              key: connection-string
+        
+        # LDAP Authentication Environment Variables
+        - name: AIRFLOW__WEBSERVER__AUTHENTICATE
+          value: "True"
+        - name: AIRFLOW__WEBSERVER__AUTH_BACKEND
+          value: airflow.contrib.auth.backends.ldap_auth
+        - name: AIRFLOW__LDAP__URI
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-uri
+        - name: AIRFLOW__LDAP__BIND_USER
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-bind-user
+        - name: AIRFLOW__LDAP__BIND_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-bind-password
+        - name: AIRFLOW__LDAP__SEARCH_BASE
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-search-base
+        
+        # Kubernetes Executor Configuration
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
+        
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: airflow-config
+          mountPath: /opt/airflow/airflow.cfg
+          subPath: airflow.cfg
+        - name: airflow-webserver-secret
+          mountPath: /opt/airflow/webserver_config.py
+          subPath: webserver_config.py
+      
+      volumes:
+      - name: airflow-config
+        configMap:
+          name: airflow-config
+      - name: airflow-webserver-secret
+        secret:
+          secretName: airflow-webserver-secret
+
+---
+# 3. Airflow Scheduler Deployment with Enhanced Configuration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow-scheduler
+    spec:
+      serviceAccountName: airflow-scheduler-sa
+      containers:
+      - name: airflow-scheduler
+        image: apache/airflow:2.6.3-python3.9
+        env:
+        # Database Connection
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          valueFrom:
+            secretKeyRef:
+              name: airflow-database-secret
+              key: connection-string
+        
+        # LDAP Authentication for Scheduler
+        - name: AIRFLOW__LDAP__URI
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-uri
+        - name: AIRFLOW__LDAP__BIND_USER
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-bind-user
+        - name: AIRFLOW__LDAP__BIND_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-bind-password
+        - name: AIRFLOW__LDAP__SEARCH_BASE
+          valueFrom:
+            secretKeyRef:
+              name: airflow-ldap-secret
+              key: ldap-search-base
+        
+        # Kubernetes Executor Configuration
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
+        
+        volumeMounts:
+        - name: airflow-config
+          mountPath: /opt/airflow/airflow.cfg
+          subPath: airflow.cfg
+        - name: airflow-scheduler-secrets
+          mountPath: /opt/airflow/secrets
+      
+      volumes:
+      - name: airflow-config
+        configMap:
+          name: airflow-config
+      - name: airflow-scheduler-secrets
+        secret:
+          secretName: airflow-scheduler-secrets
+
+---
+# 4. Database Connection Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-database-secret
+type: Opaque
+stringData:
+  connection-string: mysql+pymysql://airflow:${DB_PASSWORD}@mysql-external-service.external-namespace.svc.cluster.local/airflowdb
+
+---
+# 5. Webserver Secret Configuration
+apiVersion: v1
+kind: Secret
+metadata:
+  name: airflow-webserver-secret
+type: Opaque
+stringData:
+  webserver_config.py: |
+    from airflow.www.security import AirflowSecurityManager
+    
+    class CustomSecurityManager(AirflowSecurityManager):
+        def __init__(self, appbuilder):
+            super(CustomSecurityManager, self).__init__(appbuilder)
+
+    SECURITY_MANAGER_CLASS = CustomSecurityManager
+
+---
+# 6. Service Account for Scheduler
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow-scheduler-sa
+---
+# 7. ConfigMap for Airflow Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-config
+data:
+  airflow.cfg: |
+    [core]
+    dags_folder = /opt/airflow/dags
+    executor = KubernetesExecutor
+    load_examples = False
+    plugins_folder = /opt/airflow/plugins
+
+    [kubernetes]
+    namespace = airflow
+    worker_container_repository = apache/airflow
+    worker_container_tag = 2.6.3-python3.9
+    worker_pods_creation_batch_size = 10
+    delete_worker_pods = True
+
+    [webserver]
+    web_server_host = 0.0.0.0
+    web_server_port = 8080
+    rbac = True
+    authenticate = True
+    auth_backend = airflow.contrib.auth.backends.ldap_auth
+
+    [ldap]
+    uri = ${LDAP_URI}
+    bind_user = ${LDAP_BIND_USER}
+    search_base = ${LDAP_SEARCH_BASE}
+    user_filter = sAMAccountName={username}
+    group_member_field = memberOf
+    superuser_filter = memberOf=CN=Airflow Admins,OU=Groups,DC=example,DC=com
+    data_profiler_filter = memberOf=CN=Airflow Data Profilers,OU=Groups,DC=example,DC=com
+
+    [logging]
+    base_log_folder = /opt/airflow/logs
+    remote_logging = False
+
+    [database]
+    sql_alchemy_pool_enabled = True
+    sql_alchemy_pool_size = 5
+    sql_alchemy_max_overflow = 10
+
+---
+# 8. Airflow Webserver Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-webserver
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: airflow-webserver

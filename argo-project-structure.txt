@@ -1,0 +1,59 @@
+.
+├── argo/
+│   ├── workflows/
+│   │   ├── base/
+│   │   │   ├── kustomization.yaml
+│   │   │   └── workflow-rbac.yaml
+│   │   ├── templates/
+│   │   │   ├── data-processing-workflow.yaml
+│   │   │   ├── ci-workflow.yaml
+│   │   │   └── deploy-workflow.yaml
+│   │   └── overlays/
+│   │       ├── development/
+│   │       │   └── kustomization.yaml
+│   │       ├── staging/
+│   │       │   └── kustomization.yaml
+│   │       └── production/
+│   │           └── kustomization.yaml
+│   │
+│   ├── cd/
+│   │   ├── applications/
+│   │   │   ├── service-a-app.yaml
+│   │   │   ├── service-b-app.yaml
+│   │   │   └── service-c-app.yaml
+│   │   ├── projects/
+│   │   │   ├── project-a.yaml
+│   │   │   └── project-b.yaml
+│   │   └── clusters/
+│   │       ├── dev-cluster.yaml
+│   │       ├── staging-cluster.yaml
+│   │       └── prod-cluster.yaml
+│   │
+│   └── resources/
+│       ├── configmaps/
+│       │   ├── workflow-config.yaml
+│       │   └── global-config.yaml
+│       └── secrets/
+│           └── sealed-secrets/
+│               ├── workflow-secrets.yaml
+│               └── repository-secrets.yaml
+│
+├── .github/
+│   └── workflows/
+│       ├── argo-workflow-validation.yaml
+│       └── cd-sync.yaml
+│
+├── manifests/
+│   ├── deployments/
+│   │   ├── service-a-deployment.yaml
+│   │   └── service-b-deployment.yaml
+│   ├── services/
+│   │   ├── service-a-service.yaml
+│   │   └── service-b-service.yaml
+│   └── ingress/
+│       └── ingress-config.yaml
+│
+└── scripts/
+    ├── init-argo.sh
+    ├── validate-workflows.py
+    └── generate-manifests.sh

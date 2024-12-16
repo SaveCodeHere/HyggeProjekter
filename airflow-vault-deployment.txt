@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-deployment
+  namespace: airflow-namespace
+spec:
+  replicas: 1
+  template:
+    spec:
+      serviceAccountName: airflow-service-account
+      containers:
+      - name: airflow
+        image: apache/airflow:latest
+        env:
+        - name: VAULT_ADDR
+          value: "https://vault.example.com"
+        - name: VAULT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vault-token
+              key: token
+        volumeMounts:
+        - name: vault-agent-config
+          mountPath: /etc/vault/config
+      volumes:
+      - name: vault-agent-config
+        configMap:
+          name: vault-agent-config
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: airflow-service-account
+  namespace: airflow-namespace
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-config
+  namespace: airflow-namespace
+data:
+  vault-agent-config.hcl: |
+    pid_file = "/tmp/agent.pid"
+    vault {
+      address = "https://vault.example.com"
+    }
+    auto_auth {
+      method "kubernetes" {
+        mount_path = "auth/kubernetes"
+        config = {
+          role = "airflow"
+        }
+      }
+      sink "file" {
+        config = {
+          path = "/etc/vault/config/token"
+        }
+      }
+    }
