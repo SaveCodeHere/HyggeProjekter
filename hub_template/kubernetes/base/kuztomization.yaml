@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Add no prefix/suffix naming code
+
+resources:
+  - hub-deploy.yaml
+  - service.yaml
+
+configMapGenerator:
+  - name: jupyterhub-config
+    files:
+      - jupyterhub_config.py
+      

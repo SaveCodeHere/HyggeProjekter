@@ -1,0 +1,6 @@
+jupyterhub-ldapauthenticator
+oauthenticator
+kubernetes
+openshift
+notebook
+jupyterlab

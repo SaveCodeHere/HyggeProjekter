@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyterhub
+  labels:
+    app: jupyterhub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyterhub
+  template:
+    metadata:
+      labels:
+        app: jupyterhub
+    spec:
+      containers:
+      - name: jupyterhub
+        image: # use the docker image you build from dockerfile
+        ports:
+        - containerPort: 8000
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: jupyterhub-data
+          mountPath: /srv/jupyterhub
+      volumes:
+      - name: jupyterhub-data
+        emptyDir: {} # Possibly change this to a pvc
